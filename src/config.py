@@ -4,6 +4,11 @@ from pathlib import Path
 _PROJECT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
+def load_env() -> None:
+    for key, value in _parse_env_file(_PROJECT_ENV_FILE).items():
+        os.environ.setdefault(key, value)
+
+
 def _parse_env_file(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}

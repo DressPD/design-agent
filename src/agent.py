@@ -1,5 +1,9 @@
 import sys
 
+from src.config import load_env
+
+load_env()
+
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
