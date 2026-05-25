@@ -9,7 +9,7 @@ from strands.agent.conversation_manager import SlidingWindowConversationManager
 from strands.models import BedrockModel
 
 from src.infra_config import CLOUDFRONT_DISTRIBUTION_ID, CLOUDFRONT_DOMAIN, S3_BUCKET
-from src.mcp.clients import create_stitch_client, create_twentyfirst_client
+from src.mcp.clients import create_stitch_client
 from src.tools import (
     deploy_to_aws,
     destroy_resources,
@@ -28,20 +28,15 @@ You are a Design Agent that creates beautiful, mobile-first React applications f
 
 ## Your Capabilities
 
-You have TWO design tool suites (via MCP) plus deployment tools:
+You have a design tool suite (via MCP) plus deployment tools:
 
-### Stitch (Google) — Screen Design
+### Stitch (Google) — Screen Design & Components
 - create_project: Start a new Stitch project
+- create_design_system / update_design_system / apply_design_system: Set visual theme (colors, fonts, shapes)
 - generate_screen_from_text: Generate full-page designs from descriptions
 - edit_screens: Modify existing screens with text prompts
 - generate_variants: Create design alternatives
-- create_design_system / apply_design_system: Set visual theme (colors, fonts, shapes)
 - list_screens / get_screen: Inspect generated designs
-
-### 21st.dev — React Components
-- 21st_magic_component_builder: Generate production-ready React components
-- 21st_magic_component_inspiration: Browse component examples for ideas
-- 21st_magic_component_refiner: Improve existing components
 
 ### Deployment Tools
 - scaffold_react_app: Build a Vite + React + Tailwind project from components
@@ -56,11 +51,10 @@ You have TWO design tool suites (via MCP) plus deployment tools:
 1. UNDERSTAND: Ask clarifying questions about the user's vision — purpose, target audience, style, key pages/sections.
 2. DESIGN: Create a Stitch project and design system first (choose colors, fonts, shape). Then generate screens. Present results and ask for feedback.
 3. ITERATE: Edit screens based on feedback. Generate variants if the user wants alternatives. Repeat until approved.
-4. COMPONENT: Use 21st.dev to build React components matching the approved designs. Prefer 21st_magic_component_builder for custom components; use 21st_magic_component_inspiration to find existing components that fit.
-5. BUILD: scaffold_react_app creates a complete Vite+React+Tailwind project. Pass all component code in components_json. The project_name becomes the URL path prefix.
-6. DEPLOY: deploy_to_aws (with project_name) → github_create_and_push → take_screenshots → save_manifest.
-7. DELIVER: Return the live URL (https://{{cf_domain}}/{{project_name}}/), GitHub repo link, and screenshots.
-8. DESTROY: When asked, load_manifest then destroy_resources. This deletes the S3 prefix and GitHub repo.
+4. BUILD: Write React components based on the approved Stitch designs. scaffold_react_app creates a complete Vite+React+Tailwind project. Pass all component code in components_json. The project_name becomes the URL path prefix.
+5. DEPLOY: deploy_to_aws (with project_name) → github_create_and_push → take_screenshots → save_manifest.
+6. DELIVER: Return the live URL (https://{{cf_domain}}/{{project_name}}/), GitHub repo link, and screenshots.
+7. DESTROY: When asked, load_manifest then destroy_resources. This deletes the S3 prefix and GitHub repo.
 
 ## Multi-Project Architecture
 
@@ -104,7 +98,6 @@ def main() -> None:
     ))
 
     stitch = create_stitch_client()
-    twentyfirst = create_twentyfirst_client()
 
     model = BedrockModel(
         model_id=MODEL_ID,
@@ -116,7 +109,6 @@ def main() -> None:
         model=model,
         tools=[
             stitch,
-            twentyfirst,
             scaffold_react_app,
             github_create_and_push,
             deploy_to_aws,

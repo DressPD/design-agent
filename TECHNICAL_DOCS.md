@@ -1,6 +1,6 @@
 # Design Agent
 
-AI agent that creates React frontends from natural language. Uses [Stitch](https://stitch.googleapis.com) for screen design and [21st.dev](https://21st.dev) for React components, then deploys to AWS (S3 + CloudFront).
+AI agent that creates React frontends from natural language. Uses [Google Stitch](https://stitch.withgoogle.com/) for AI screen design, then scaffolds React + Tailwind projects and deploys to AWS (S3 + CloudFront).
 
 Built with [Strands Agents](https://github.com/strands-agents/sdk-python) on Amazon Bedrock (Claude Sonnet 4.6).
 
@@ -8,8 +8,8 @@ Built with [Strands Agents](https://github.com/strands-agents/sdk-python) on Ama
 
 - Python 3.11+
 - Node.js 18+ (for Vite builds)
-- AWS CLI configured with `hyver-prod` profile
-- GitHub CLI (`gh`) authenticated
+- AWS credentials (SSO profile or static keys)
+- GitHub CLI (`gh`) authenticated, or `GITHUB_TOKEN` set
 - Playwright browsers installed
 
 ## Setup
@@ -28,14 +28,14 @@ playwright install chromium
 
 ### API Keys
 
-The agent reads keys from `~/.config/opencode/.env` (auto-loaded by `.zshrc`). Required vars:
+Create a `.env` file in the project root (see `.env.example`):
 
 ```
 GOOGLE_API_KEY=<your-stitch-api-key>
-TWENTYFIRST_API_KEY=<your-21st-dev-api-key>
+GITHUB_TOKEN=<your-github-pat>
 ```
 
-If these are already set as environment variables, the `.env` file is not needed.
+The agent reads keys from environment variables first, falling back to the project `.env` file.
 
 ### Infrastructure
 
@@ -47,17 +47,20 @@ CloudFront:      E13CVD2UT1V127
 CloudFront URL:  https://djth7oc46jvbj.cloudfront.net
 ```
 
+Each project deploys to its own URL prefix (`/{project-name}/`). A CloudFront Function handles per-prefix SPA routing.
+
 To re-provision from scratch:
 
 ```bash
-AWS_PROFILE=hyver-prod terraform -chdir=infra/terraform init
-AWS_PROFILE=hyver-prod terraform -chdir=infra/terraform apply
-# Update src/infra_config.py with new output values
+terraform -chdir=infra/terraform init
+terraform -chdir=infra/terraform apply
+# Update .env with DESIGN_AGENT_S3_BUCKET, DESIGN_AGENT_CF_DIST_ID, DESIGN_AGENT_CF_DOMAIN
 ```
 
 ## Usage
 
 ```bash
+set -a; source .env; set +a
 design-agent
 # or: python -m src.agent
 ```
@@ -82,20 +85,20 @@ Agent: [edits screens in Stitch]
 
 You: Yes, build and deploy it.
 
-Agent: [generates React components via 21st.dev]
+Agent: [writes React components from approved Stitch designs]
        [scaffolds Vite + React + Tailwind project]
-       [creates GitHub repo: bean-and-brew]
        [deploys to S3 + CloudFront]
+       [creates public GitHub repo: bean-and-brew]
        [takes desktop + mobile screenshots]
 
        Done! Here are your links:
-       - Live site: https://djth7oc46jvbj.cloudfront.net
+       - Live site: https://djth7oc46jvbj.cloudfront.net/bean-and-brew/
        - GitHub: https://github.com/your-user/bean-and-brew
        - Screenshots saved to /tmp/design-agent-screenshots/bean-and-brew/
 
 You: Looks great. Now destroy it.
 
-Agent: [empties S3, disables CloudFront, deletes GitHub repo]
+Agent: [empties S3 prefix, invalidates CloudFront, deletes GitHub repo]
        All resources for "bean-and-brew" have been destroyed.
 ```
 
@@ -104,8 +107,9 @@ Agent: [empties S3, disables CloudFront, deletes GitHub repo]
 To test without the interactive loop, you can exercise each tool individually:
 
 ```bash
-# 1. Activate venv
+# 1. Activate venv + load env
 source .venv/bin/activate
+set -a; source .env; set +a
 
 # 2. Test scaffold (creates a minimal React app)
 python -c "
@@ -123,6 +127,7 @@ print(result)
 python -c "
 from src.tools.deploy import deploy_to_aws
 result = deploy_to_aws(
+    project_name='test-app',
     dist_path='/tmp/design-agent-builds/test-app/dist',
     s3_bucket='design-agent-sites-363437155153',
     cloudfront_distribution_id='E13CVD2UT1V127'
@@ -131,20 +136,23 @@ print(result)
 "
 
 # 4. Verify it's live
-curl -s https://djth7oc46jvbj.cloudfront.net | head -5
+curl -s https://djth7oc46jvbj.cloudfront.net/test-app/ | head -5
 
 # 5. Test screenshot
 python -c "
 from src.tools.screenshot import take_screenshots
 result = take_screenshots(
-    url='https://djth7oc46jvbj.cloudfront.net',
+    url='https://djth7oc46jvbj.cloudfront.net/test-app/',
     project_name='test-app'
 )
 print(result)
 "
 
 # 6. Cleanup — remove from S3
-AWS_PROFILE=hyver-prod aws s3 rm s3://design-agent-sites-363437155153/ --recursive
+python -c "
+from src.tools.destroy import _destroy_s3
+_destroy_s3('design-agent-sites-363437155153', 'test-app')
+"
 ```
 
 ## Tests
@@ -153,7 +161,7 @@ AWS_PROFILE=hyver-prod aws s3 rm s3://design-agent-sites-363437155153/ --recursi
 pytest tests/ -v
 ```
 
-96 unit tests covering all tools, config, and MCP client setup. All external calls (AWS, GitHub, npm, Playwright) are mocked.
+89 unit tests covering all tools, config, and MCP client setup. All external calls (AWS, GitHub, npm, Playwright) are mocked.
 
 ## Project Structure
 
@@ -161,19 +169,24 @@ pytest tests/ -v
 design-agent/
 ├── src/
 │   ├── agent.py          # Main agent loop (Strands + Rich UI)
-│   ├── config.py          # API key loading (~/.config/opencode/.env fallback)
-│   ├── infra_config.py    # Pre-provisioned S3/CF resource IDs
+│   ├── config.py          # API key loading (env vars → project .env fallback)
+│   ├── infra_config.py    # S3/CF resource IDs (env var overrides)
 │   ├── mcp/
-│   │   └── clients.py     # Stitch (HTTP) + 21st.dev (stdio) MCP clients
+│   │   └── clients.py     # Stitch MCP client (HTTP/SSE)
 │   └── tools/
 │       ├── scaffold.py    # Vite + React + Tailwind project generator
-│       ├── github.py      # Private repo creation via gh CLI
-│       ├── deploy.py      # S3 sync + CloudFront invalidation
-│       ├── destroy.py     # Tear down all resources
+│       ├── github.py      # Public repo creation via gh CLI / GITHUB_TOKEN
+│       ├── deploy.py      # S3 sync (per-prefix) + CloudFront invalidation
+│       ├── destroy.py     # Tear down project resources (S3 prefix, GH repo)
 │       ├── screenshot.py  # Playwright desktop + mobile captures
 │       └── manifest.py    # Resource tracking (JSON per project)
-├── tests/                 # 96 unit tests
-├── infra/terraform/       # S3 + CloudFront IaC
+├── tests/                 # 89 unit tests
+├── infra/
+│   ├── terraform/         # S3 + CloudFront + CF Function IaC
+│   └── iam-policy.json    # Required AWS permissions
+├── Dockerfile
+├── docker-compose.yml
 ├── manifests/             # Runtime: project resource manifests
+├── .env.example           # Template for required env vars
 └── pyproject.toml
 ```

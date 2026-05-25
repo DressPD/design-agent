@@ -2,7 +2,7 @@
 
 AI-powered design-to-deployment agent. Describe a website in plain language → get a live URL.
 
-Uses [Google Stitch](https://stitch.withgoogle.com/) for screen design, [21st.dev](https://21st.dev/) for React components, and deploys to AWS (S3 + CloudFront).
+Uses [Google Stitch](https://stitch.withgoogle.com/) for AI screen design and deploys to AWS (S3 + CloudFront).
 
 ## Quick Start
 
@@ -27,7 +27,6 @@ Edit `.env` with your keys:
 | Variable | Where to get it |
 |----------|----------------|
 | `GOOGLE_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) |
-| `TWENTYFIRST_API_KEY` | [21st.dev](https://21st.dev/) |
 | `GITHUB_TOKEN` | [GitHub Settings → Tokens](https://github.com/settings/tokens) — scopes: `repo`, `delete_repo` |
 | `AWS_DEFAULT_REGION` | `eu-central-1` |
 
@@ -70,11 +69,10 @@ docker compose up --build
 
 1. **Design** — Creates UI screens using Google Stitch (AI design tool)
 2. **Iterate** — Refines based on your feedback
-3. **Component** — Finds production React components from 21st.dev
-4. **Build** — Scaffolds a Vite + React + Tailwind project
-5. **Deploy** — Uploads to S3, serves via CloudFront
-6. **Publish** — Pushes source to a public GitHub repo under your account
-7. **Destroy** — Cleans up everything (S3 prefix, CloudFront cache, GitHub repo)
+3. **Build** — Writes React components from approved designs, scaffolds Vite + Tailwind project
+4. **Deploy** — Uploads to S3, serves via CloudFront
+5. **Publish** — Pushes source to a public GitHub repo under your account
+6. **Destroy** — Cleans up everything (S3 prefix, CloudFront cache, GitHub repo)
 
 ## Tests
 
@@ -82,7 +80,7 @@ docker compose up --build
 pytest tests/ -v
 ```
 
-96 tests covering all tools and config.
+89 tests covering all tools and config.
 
 ## Infrastructure
 

@@ -1,7 +1,7 @@
 [project]
 name = "design-agent"
 version = "0.1.0"
-description = "AI design agent: generates React frontends from natural language using Stitch + 21st.dev, deploys to AWS"
+description = "AI design agent: generates React frontends from natural language using Google Stitch, deploys to AWS"
 requires-python = ">=3.11"
 dependencies = [
     "strands-agents>=0.1.0",

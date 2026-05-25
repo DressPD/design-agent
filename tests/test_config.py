@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import src.config as config_module
-from src.config import get_api_key, _parse_env_file, get_google_api_key, get_twentyfirst_api_key
+from src.config import get_api_key, _parse_env_file, get_google_api_key
 
 
 class TestParseEnvFile:
@@ -87,10 +87,6 @@ class TestGetApiKey:
     def test_get_google_api_key_uses_correct_name(self, monkeypatch):
         monkeypatch.setenv("GOOGLE_API_KEY", "google-key-123")
         assert get_google_api_key() == "google-key-123"
-
-    def test_get_twentyfirst_api_key_uses_correct_name(self, monkeypatch):
-        monkeypatch.setenv("TWENTYFIRST_API_KEY", "21st-key-456")
-        assert get_twentyfirst_api_key() == "21st-key-456"
 
     def test_error_message_includes_key_name(self, monkeypatch, tmp_path):
         monkeypatch.delenv("SPECIAL_KEY", raising=False)

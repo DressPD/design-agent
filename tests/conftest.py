@@ -56,17 +56,10 @@ if "playwright" not in sys.modules:
 @pytest.fixture
 def mock_env(monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-    monkeypatch.delenv("TWENTYFIRST_API_KEY", raising=False)
     return monkeypatch
 
 
 @pytest.fixture
 def env_with_google_key(monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
-    return monkeypatch
-
-
-@pytest.fixture
-def env_with_twentyfirst_key(monkeypatch):
-    monkeypatch.setenv("TWENTYFIRST_API_KEY", "test-21st-key")
     return monkeypatch
