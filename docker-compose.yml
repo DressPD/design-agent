@@ -1,0 +1,8 @@
+services:
+  agent:
+    build: .
+    stdin_open: true
+    tty: true
+    env_file: .env
+    volumes:
+      - ./manifests:/app/manifests
