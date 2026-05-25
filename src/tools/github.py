@@ -1,7 +1,7 @@
 """GitHub operations — create repo and push code.
 
-Auth: uses GITHUB_TOKEN env var (or GH_TOKEN). The gh CLI and git push
-both respect this token.  Each user sets their own token → repos are
+Auth: uses GITHUB_TOKEN / GH_TOKEN env var. The gh CLI and git push
+both respect this token. Each user sets their own token so repos are
 created under their own account.
 """
 
@@ -11,6 +11,8 @@ import subprocess
 from pathlib import Path
 
 from strands import tool
+
+from src.tools._validate import _redact_stderr, safe_project_name
 
 
 def _get_github_token() -> str | None:
@@ -31,19 +33,28 @@ def _ensure_git_repo(project: Path) -> None:
     if git_dir.exists():
         return
 
-    git_env = {
+    git_env = _git_env()
+    subprocess.run(["git", "init", "-b", "main"], cwd=project, capture_output=True, timeout=30, check=True)
+    subprocess.run(["git", "add", "."], cwd=project, capture_output=True, timeout=30, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit from Design Agent"],
+        cwd=project, capture_output=True, timeout=30, env=git_env, check=True,
+    )
+
+
+def _git_env() -> dict[str, str]:
+    env = {
         "GIT_AUTHOR_NAME": "Design Agent",
         "GIT_AUTHOR_EMAIL": "design-agent@local",
         "GIT_COMMITTER_NAME": "Design Agent",
         "GIT_COMMITTER_EMAIL": "design-agent@local",
         "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin"),
     }
-    subprocess.run(["git", "init", "-b", "main"], cwd=project, capture_output=True, timeout=30)
-    subprocess.run(["git", "add", "."], cwd=project, capture_output=True, timeout=30)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial commit from Design Agent"],
-        cwd=project, capture_output=True, timeout=30, env=git_env,
-    )
+    token = _get_github_token()
+    if token:
+        env["GITHUB_TOKEN"] = token
+        env["GH_TOKEN"] = token
+    return env
 
 
 @tool
@@ -67,11 +78,15 @@ def github_create_and_push(
     Returns:
         JSON with repo_url and push status.
     """
+    try:
+        safe_project_name(repo_name)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     project = Path(local_path)
     if not project.exists():
         return json.dumps({"error": f"Path does not exist: {local_path}"})
 
-    # gh repo create --source requires an initialized git repo
     _ensure_git_repo(project)
 
     visibility = "--private" if private else "--public"
@@ -85,17 +100,11 @@ def github_create_and_push(
     if create_result.returncode != 0:
         if "already exists" in create_result.stderr:
             return _push_to_existing(repo_name, project)
-        return json.dumps({"error": "gh repo create failed", "stderr": create_result.stderr[:500]})
+        return json.dumps({"error": "gh repo create failed", "stderr": _redact_stderr(create_result.stderr)})
 
     repo_url = create_result.stdout.strip().split("\n")[0]
     if not repo_url.startswith("http"):
-        repo_url_result = subprocess.run(
-            ["gh", "repo", "view", repo_name, "--json", "url", "-q", ".url"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        repo_url = repo_url_result.stdout.strip()
+        repo_url = _get_repo_url(repo_name)
 
     return json.dumps({
         "repo_url": repo_url,
@@ -104,30 +113,19 @@ def github_create_and_push(
     })
 
 
-def _push_to_existing(repo_name: str, project: Path) -> str:
-    repo_url_result = subprocess.run(
+def _get_repo_url(repo_name: str) -> str:
+    result = subprocess.run(
         ["gh", "repo", "view", repo_name, "--json", "url", "-q", ".url"],
         capture_output=True,
         text=True,
         timeout=30,
     )
-    repo_url = repo_url_result.stdout.strip()
+    return result.stdout.strip()
 
-    token = _get_github_token()
-    push_url = repo_url
-    if token and push_url.startswith("https://"):
-        push_url = push_url.replace("https://", f"https://x-access-token:{token}@")
 
-    git_env = {
-        "GIT_AUTHOR_NAME": "Design Agent",
-        "GIT_AUTHOR_EMAIL": "design-agent@local",
-        "GIT_COMMITTER_NAME": "Design Agent",
-        "GIT_COMMITTER_EMAIL": "design-agent@local",
-        "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin"),
-    }
-    if token:
-        git_env["GITHUB_TOKEN"] = token
-        git_env["GH_TOKEN"] = token
+def _push_to_existing(repo_name: str, project: Path) -> str:
+    repo_url = _get_repo_url(repo_name)
+    git_env = _git_env()
 
     subprocess.run(["git", "init", "-b", "main"], cwd=project, capture_output=True, timeout=30)
     subprocess.run(["git", "add", "."], cwd=project, capture_output=True, timeout=30)
@@ -136,7 +134,7 @@ def _push_to_existing(repo_name: str, project: Path) -> str:
         cwd=project, capture_output=True, timeout=30, env=git_env,
     )
     subprocess.run(
-        ["git", "remote", "add", "origin", push_url],
+        ["git", "remote", "add", "origin", repo_url],
         cwd=project, capture_output=True, timeout=30,
     )
     push_result = subprocess.run(
@@ -145,7 +143,7 @@ def _push_to_existing(repo_name: str, project: Path) -> str:
     )
 
     if push_result.returncode != 0:
-        return json.dumps({"error": "git push failed", "stderr": push_result.stderr[:500]})
+        return json.dumps({"error": "git push failed", "stderr": _redact_stderr(push_result.stderr)})
 
     return json.dumps({
         "repo_url": repo_url,

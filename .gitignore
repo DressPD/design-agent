@@ -12,6 +12,13 @@ venv/
 
 # Environment secrets
 .env
+.env.*
+!.env.example
+
+# Secrets / keys
+*.pem
+*.key
+*.crt
 
 # IDE
 .vscode/

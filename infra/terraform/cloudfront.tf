@@ -1,3 +1,30 @@
+resource "aws_cloudfront_response_headers_policy" "security" {
+  name = "${var.project_prefix}-security-headers"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = true
+      override                   = true
+      preload                    = true
+    }
+
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+  }
+}
+
 resource "aws_cloudfront_origin_access_control" "site" {
   name                              = "${var.project_prefix}-oac"
   origin_access_control_origin_type = "s3"
@@ -53,6 +80,8 @@ resource "aws_cloudfront_distribution" "site" {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.spa_router.arn
     }
+
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
 
     min_ttl     = 0
     default_ttl = 86400

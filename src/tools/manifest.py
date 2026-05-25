@@ -8,10 +8,13 @@ from typing import Any
 
 from strands import tool
 
+from src.tools._validate import safe_project_name
+
 MANIFESTS_DIR = Path(__file__).resolve().parent.parent.parent / "manifests"
 
 
 def _manifest_path(project_name: str) -> Path:
+    project_name = safe_project_name(project_name)
     return MANIFESTS_DIR / f"{project_name}.json"
 
 

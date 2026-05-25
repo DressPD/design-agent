@@ -5,6 +5,8 @@ from pathlib import Path
 
 from strands import tool
 
+from src.tools._validate import safe_project_name
+
 VIEWPORTS = {
     "desktop": {"width": 1920, "height": 1080},
     "mobile": {"width": 375, "height": 812},
@@ -32,6 +34,11 @@ def take_screenshots(
     Returns:
         JSON with file paths to saved screenshots.
     """
+    try:
+        project_name = safe_project_name(project_name)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     from playwright.sync_api import sync_playwright
 
     output_dir = Path(f"/tmp/design-agent-screenshots/{project_name}")
@@ -42,30 +49,30 @@ def take_screenshots(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        try:
+            for viewport_name in requested:
+                vp = VIEWPORTS.get(viewport_name)
+                if not vp:
+                    continue
 
-        for viewport_name in requested:
-            vp = VIEWPORTS.get(viewport_name)
-            if not vp:
-                continue
+                page = browser.new_page(viewport=vp)
+                page.goto(url, wait_until="networkidle", timeout=30000)
+                page.wait_for_timeout(2000)
 
-            page = browser.new_page(viewport=vp)
-            page.goto(url, wait_until="networkidle", timeout=30000)
-            page.wait_for_timeout(2000)
+                filename = f"{viewport_name}.png"
+                filepath = output_dir / filename
+                page.screenshot(path=str(filepath), full_page=full_page)
 
-            filename = f"{viewport_name}.png"
-            filepath = output_dir / filename
-            page.screenshot(path=str(filepath), full_page=full_page)
+                screenshots.append({
+                    "viewport": viewport_name,
+                    "width": str(vp["width"]),
+                    "height": str(vp["height"]),
+                    "path": str(filepath),
+                })
 
-            screenshots.append({
-                "viewport": viewport_name,
-                "width": str(vp["width"]),
-                "height": str(vp["height"]),
-                "path": str(filepath),
-            })
-
-            page.close()
-
-        browser.close()
+                page.close()
+        finally:
+            browser.close()
 
     return json.dumps({
         "project_name": project_name,

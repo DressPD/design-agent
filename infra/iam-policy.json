@@ -16,15 +16,14 @@
       ]
     },
     {
-      "Sid": "CloudFrontInvalidate",
+      "Sid": "CloudFrontInvalidateAndRead",
       "Effect": "Allow",
       "Action": [
         "cloudfront:CreateInvalidation",
         "cloudfront:GetDistribution",
-        "cloudfront:GetDistributionConfig",
-        "cloudfront:UpdateDistribution"
+        "cloudfront:GetDistributionConfig"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:cloudfront::363437155153:distribution/*"
     },
     {
       "Sid": "BedrockInvoke",
@@ -33,7 +32,7 @@
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:bedrock:eu-central-1::foundation-model/*"
     }
   ]
 }

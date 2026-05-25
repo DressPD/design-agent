@@ -26,7 +26,11 @@ RUN pip install --no-cache-dir .
 
 RUN playwright install --with-deps chromium
 
-RUN mkdir -p manifests
+RUN useradd -m -s /bin/bash agent \
+    && mkdir -p manifests \
+    && chown -R agent:agent /app
+
+USER agent
 
 ENV PYTHONUNBUFFERED=1
 

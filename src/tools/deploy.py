@@ -7,6 +7,8 @@ import time
 import boto3
 from strands import tool
 
+from src.tools._validate import _redact_stderr, safe_build_path, safe_project_name
+
 
 @tool
 def deploy_to_aws(
@@ -29,6 +31,12 @@ def deploy_to_aws(
     Returns:
         JSON with the live URL (https://{domain}/{project_name}/), bucket, and status.
     """
+    try:
+        project_name = safe_project_name(project_name)
+        dist_path = safe_build_path(dist_path)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     s3_prefix = f"s3://{s3_bucket}/{project_name}/"
 
     sync_result = subprocess.run(
@@ -43,9 +51,9 @@ def deploy_to_aws(
         timeout=120,
     )
     if sync_result.returncode != 0:
-        return json.dumps({"error": "s3 sync failed", "stderr": sync_result.stderr[:500]})
+        return json.dumps({"error": "s3 sync failed", "stderr": _redact_stderr(sync_result.stderr)})
 
-    subprocess.run(
+    cp_result = subprocess.run(
         [
             "aws", "s3", "cp",
             f"{dist_path}/index.html", f"{s3_prefix}index.html",
@@ -56,6 +64,8 @@ def deploy_to_aws(
         text=True,
         timeout=30,
     )
+    if cp_result.returncode != 0:
+        return json.dumps({"error": "index.html upload failed", "stderr": _redact_stderr(cp_result.stderr)})
 
     cf_client = boto3.client("cloudfront")
     cf_client.create_invalidation(

@@ -70,10 +70,11 @@ class TestDestroyResources:
         assert data["destroyed"]["github"] == "deleted"
 
     def test_removes_local_build_path(self, manifests_dir, tmp_path):
-        build_dir = tmp_path / "build"
-        build_dir.mkdir()
-        write_manifest(manifests_dir, "myproj", {"local_build_path": str(build_dir)})
-        result = destroy_resources("myproj")
+        build_dir = tmp_path / "design-agent-builds" / "myproj"
+        build_dir.mkdir(parents=True)
+        with patch("src.tools.destroy.safe_build_path", return_value=str(build_dir)):
+            write_manifest(manifests_dir, "myproj", {"local_build_path": str(build_dir)})
+            result = destroy_resources("myproj")
         data = json.loads(result)
         assert data["destroyed"]["local"] == "removed"
         assert not build_dir.exists()
@@ -94,8 +95,8 @@ class TestDestroyResources:
         assert "github" not in data["destroyed"]
 
     def test_destroys_all_resources_in_full_manifest(self, manifests_dir, tmp_path):
-        build_dir = tmp_path / "build"
-        build_dir.mkdir()
+        build_dir = tmp_path / "design-agent-builds" / "myproj"
+        build_dir.mkdir(parents=True)
         write_manifest(manifests_dir, "myproj", {
             "s3_bucket": "my-bucket",
             "cloudfront_distribution_id": "DIST123",
@@ -110,7 +111,8 @@ class TestDestroyResources:
         }
         with patch("src.tools.destroy.subprocess.run", return_value=ok):
             with patch("src.tools.destroy.boto3.client", return_value=mock_cf):
-                result = destroy_resources("myproj")
+                with patch("src.tools.destroy.safe_build_path", return_value=str(build_dir)):
+                    result = destroy_resources("myproj")
         data = json.loads(result)
         assert set(data["destroyed"].keys()) == {"s3", "cloudfront", "github", "local", "manifest"}
 

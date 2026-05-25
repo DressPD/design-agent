@@ -9,6 +9,8 @@ from textwrap import dedent
 
 from strands import tool
 
+from src.tools._validate import safe_component_name, safe_project_name
+
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 NODE_MODULES_CACHE = Path("/tmp/design-agent-cache/node_modules")
 LOCK_CACHE = Path("/tmp/design-agent-cache/package-lock.json")
@@ -35,6 +37,11 @@ def scaffold_react_app(
     Returns:
         JSON with project_path and build status.
     """
+    try:
+        project_name = safe_project_name(project_name)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     project_path = Path(f"/tmp/design-agent-builds/{project_name}")
     if project_path.exists():
         shutil.rmtree(project_path)
@@ -57,7 +64,11 @@ def scaffold_react_app(
     src_dir = project_path / "src" / "components"
     src_dir.mkdir(parents=True, exist_ok=True)
     for comp in parsed_components:
-        comp_file = src_dir / f"{comp['name']}.tsx"
+        try:
+            cname = safe_component_name(comp["name"])
+        except ValueError as e:
+            return json.dumps({"error": str(e)})
+        comp_file = src_dir / f"{cname}.tsx"
         comp_file.write_text(comp["code"])
 
     if NODE_MODULES_CACHE.is_dir():
