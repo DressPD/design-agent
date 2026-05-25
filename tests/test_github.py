@@ -41,22 +41,22 @@ class TestGithubCreateAndPush:
         ok = make_run_result(returncode=0, stdout="https://github.com/user/my-repo\n")
         with patch("src.tools.github.subprocess.run", return_value=ok) as mock_run:
             github_create_and_push("my-repo", str(existing_project), private=True)
-        first_call_args = mock_run.call_args_list[0][0][0]
-        assert "--private" in first_call_args
+        gh_create_call = next(c for c in mock_run.call_args_list if "gh" in c[0][0])
+        assert "--private" in gh_create_call[0][0]
 
     def test_calls_gh_repo_create_with_public_flag(self, existing_project):
         ok = make_run_result(returncode=0, stdout="https://github.com/user/my-repo\n")
         with patch("src.tools.github.subprocess.run", return_value=ok) as mock_run:
             github_create_and_push("my-repo", str(existing_project), private=False)
-        first_call_args = mock_run.call_args_list[0][0][0]
-        assert "--public" in first_call_args
+        gh_create_call = next(c for c in mock_run.call_args_list if "gh" in c[0][0])
+        assert "--public" in gh_create_call[0][0]
 
     def test_falls_back_to_push_existing_when_repo_exists(self, existing_project):
         already_exists = make_run_result(returncode=1, stderr="already exists on GitHub")
         view_result = make_run_result(returncode=0, stdout="https://github.com/user/my-repo\n")
         git_ok = make_run_result(returncode=0)
         push_ok = make_run_result(returncode=0)
-        side_effects = [already_exists, view_result, git_ok, git_ok, git_ok, git_ok, push_ok]
+        side_effects = [git_ok, git_ok, git_ok, already_exists, view_result, git_ok, git_ok, git_ok, git_ok, push_ok]
         with patch("src.tools.github.subprocess.run", side_effect=side_effects):
             result = github_create_and_push("my-repo", str(existing_project))
         data = json.loads(result)
@@ -71,9 +71,10 @@ class TestGithubCreateAndPush:
         assert "error" in data
 
     def test_fetches_repo_url_when_stdout_not_http(self, existing_project):
+        git_ok = make_run_result(returncode=0)
         create_ok = make_run_result(returncode=0, stdout="not-a-url\n")
         view_ok = make_run_result(returncode=0, stdout="https://github.com/user/my-repo\n")
-        with patch("src.tools.github.subprocess.run", side_effect=[create_ok, view_ok]):
+        with patch("src.tools.github.subprocess.run", side_effect=[git_ok, git_ok, git_ok, create_ok, view_ok]):
             result = github_create_and_push("my-repo", str(existing_project))
         data = json.loads(result)
         assert data["repo_url"] == "https://github.com/user/my-repo"

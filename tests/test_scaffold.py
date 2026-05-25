@@ -12,6 +12,18 @@ SAMPLE_COMPONENTS = json.dumps([
 ])
 
 
+@pytest.fixture(autouse=True)
+def disable_npm_cache():
+    fake_cache = MagicMock()
+    fake_cache.is_dir.return_value = False
+    fake_cache.parent = MagicMock()
+    fake_cache.parent.exists.return_value = False
+    with patch("src.tools.scaffold.NODE_MODULES_CACHE", fake_cache), \
+         patch("src.tools.scaffold.shutil.copytree"), \
+         patch("src.tools.scaffold.LOCK_CACHE", MagicMock()):
+        yield
+
+
 @pytest.fixture
 def mock_subprocess_success():
     mock_result = MagicMock()

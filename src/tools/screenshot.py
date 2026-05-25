@@ -48,7 +48,7 @@ def take_screenshots(
             if not vp:
                 continue
 
-            page = browser.new_page(viewport_size=vp)
+            page = browser.new_page(viewport=vp)
             page.goto(url, wait_until="networkidle", timeout=30000)
             page.wait_for_timeout(2000)
 

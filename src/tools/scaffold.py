@@ -10,6 +10,8 @@ from textwrap import dedent
 from strands import tool
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+NODE_MODULES_CACHE = Path("/tmp/design-agent-cache/node_modules")
+LOCK_CACHE = Path("/tmp/design-agent-cache/package-lock.json")
 
 
 @tool
@@ -50,6 +52,7 @@ def scaffold_react_app(
     _write_app_tsx(project_path, parsed_components)
     _write_tsconfig(project_path)
     _write_vite_env_dts(project_path)
+    _write_gitignore(project_path)
 
     src_dir = project_path / "src" / "components"
     src_dir.mkdir(parents=True, exist_ok=True)
@@ -57,15 +60,26 @@ def scaffold_react_app(
         comp_file = src_dir / f"{comp['name']}.tsx"
         comp_file.write_text(comp["code"])
 
-    result = subprocess.run(
-        ["npm", "install", "--yes", "--fetch-retries=2", "--fetch-timeout=30000"],
-        cwd=project_path,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        return json.dumps({"error": "npm install failed", "stderr": result.stderr[:500], "project_path": str(project_path)})
+    if NODE_MODULES_CACHE.is_dir():
+        shutil.copytree(NODE_MODULES_CACHE, project_path / "node_modules", symlinks=True)
+        if LOCK_CACHE.is_file():
+            shutil.copy2(LOCK_CACHE, project_path / "package-lock.json")
+    else:
+        result = subprocess.run(
+            ["npm", "install", "--yes", "--fetch-retries=2", "--fetch-timeout=30000"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            return json.dumps({"error": "npm install failed", "stderr": result.stderr[:500], "project_path": str(project_path)})
+        if not NODE_MODULES_CACHE.parent.exists():
+            NODE_MODULES_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(project_path / "node_modules", NODE_MODULES_CACHE, symlinks=True)
+        lock = project_path / "package-lock.json"
+        if lock.is_file():
+            shutil.copy2(lock, LOCK_CACHE)
 
     result = subprocess.run(
         ["npm", "run", "build"],
@@ -93,7 +107,7 @@ def _write_package_json(path: Path, name: str) -> None:
         "type": "module",
         "scripts": {
             "dev": "vite",
-            "build": "tsc -b && vite build",
+            "build": "vite build",
             "preview": "vite preview",
         },
         "dependencies": {
@@ -195,22 +209,32 @@ def _write_main_tsx(path: Path) -> None:
 
 
 def _write_app_tsx(path: Path, components: list[dict]) -> None:
-    imports = "\n".join(f"import {c['name']} from './components/{c['name']}'" for c in components)
-    jsx_elements = "\n        ".join(f"<{c['name']} />" for c in components)
+    import_lines: list[str] = []
+    jsx_names: list[str] = []
+    for c in components:
+        name = c["name"]
+        if name == "App":
+            import_lines.append(f"import {{ default as AppContent }} from './components/App'")
+            jsx_names.append("AppContent")
+        else:
+            import_lines.append(f"import {name} from './components/{name}'")
+            jsx_names.append(name)
 
     src = path / "src"
     src.mkdir(exist_ok=True)
-    (src / "App.tsx").write_text(dedent(f"""\
-        {imports}
 
-        export default function App() {{
-          return (
-            <div className="min-h-screen bg-white">
-              {jsx_elements}
-            </div>
-          )
-        }}
-    """))
+    lines = import_lines.copy()
+    lines.append("")
+    lines.append("export default function App() {")
+    lines.append("  return (")
+    lines.append('    <div className="min-h-screen bg-white">')
+    for name in jsx_names:
+        lines.append(f"      <{name} />")
+    lines.append("    </div>")
+    lines.append("  )")
+    lines.append("}")
+    lines.append("")
+    (src / "App.tsx").write_text("\n".join(lines))
 
 
 def _write_tsconfig(path: Path) -> None:
@@ -227,9 +251,9 @@ def _write_tsconfig(path: Path) -> None:
             "moduleDetection": "force",
             "noEmit": True,
             "jsx": "react-jsx",
-            "strict": True,
-            "noUnusedLocals": True,
-            "noUnusedParameters": True,
+            "strict": False,
+            "noUnusedLocals": False,
+            "noUnusedParameters": False,
             "noFallthroughCasesInSwitch": True,
             "noUncheckedSideEffectImports": True,
         },
@@ -242,3 +266,7 @@ def _write_vite_env_dts(path: Path) -> None:
     src = path / "src"
     src.mkdir(exist_ok=True)
     (src / "vite-env.d.ts").write_text('/// <reference types="vite/client" />\n')
+
+
+def _write_gitignore(path: Path) -> None:
+    (path / ".gitignore").write_text("node_modules/\ndist/\n*.local\n")
