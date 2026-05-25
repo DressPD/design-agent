@@ -56,7 +56,7 @@ class TestCreateStitchClient:
     def test_raises_when_no_google_key(self, mock_mcp_client, mock_streamablehttp, monkeypatch, tmp_path):
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         import src.config as config_module
-        with patch.object(config_module, "OPENCODE_ENV_FILE", tmp_path / "missing.env"):
+        with patch.object(config_module, "_PROJECT_ENV_FILE", tmp_path / "missing.env"):
             from src.mcp.clients import create_stitch_client
             with pytest.raises(KeyError, match="GOOGLE_API_KEY"):
                 create_stitch_client()
@@ -109,7 +109,7 @@ class TestCreateTwentyfirstClient:
     def test_raises_when_no_twentyfirst_key(self, mock_mcp_client, mock_stdio, mock_stdio_params, monkeypatch, tmp_path):
         monkeypatch.delenv("TWENTYFIRST_API_KEY", raising=False)
         import src.config as config_module
-        with patch.object(config_module, "OPENCODE_ENV_FILE", tmp_path / "missing.env"):
+        with patch.object(config_module, "_PROJECT_ENV_FILE", tmp_path / "missing.env"):
             from src.mcp.clients import create_twentyfirst_client
             with pytest.raises(KeyError, match="TWENTYFIRST_API_KEY"):
                 create_twentyfirst_client()

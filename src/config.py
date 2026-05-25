@@ -1,9 +1,7 @@
-"""Configuration — loads API keys from env vars or global config files."""
-
 import os
 from pathlib import Path
 
-OPENCODE_ENV_FILE = Path.home() / ".config" / "opencode" / ".env"
+_PROJECT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
@@ -22,26 +20,18 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 def get_api_key(name: str) -> str:
-    """Resolve an API key by name.
-
-    Lookup order:
-      1. Environment variable (already set in shell)
-      2. ~/.config/opencode/.env file (global opencode config)
-
-    Raises KeyError if not found in any source.
-    """
+    """Resolve key by name: env var → project .env file."""
     value = os.environ.get(name)
     if value:
         return value
 
-    env_file_vars = _parse_env_file(OPENCODE_ENV_FILE)
+    env_file_vars = _parse_env_file(_PROJECT_ENV_FILE)
     value = env_file_vars.get(name)
     if value:
         return value
 
     raise KeyError(
-        f"API key '{name}' not found. "
-        f"Set it as an env var or add it to {OPENCODE_ENV_FILE}"
+        f"'{name}' not found. Set it as env var or add to {_PROJECT_ENV_FILE}"
     )
 
 
@@ -60,6 +50,5 @@ def get_github_token() -> str:
         except KeyError:
             continue
     raise KeyError(
-        "GitHub token not found. "
-        f"Set GITHUB_TOKEN as env var or add to {OPENCODE_ENV_FILE}"
+        f"GitHub token not found. Set GITHUB_TOKEN as env var or add to {_PROJECT_ENV_FILE}"
     )

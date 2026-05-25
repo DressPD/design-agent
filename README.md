@@ -12,31 +12,33 @@ Uses [Google Stitch](https://stitch.withgoogle.com/) for screen design, [21st.de
 git clone https://github.com/DressPD/design-agent.git
 cd design-agent
 python -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 playwright install chromium
 ```
 
 ### 2. Configure
 
-Copy `.env.example` to `.env` and fill in your keys:
-
 ```bash
 cp .env.example .env
 ```
+
+Edit `.env` with your keys:
 
 | Variable | Where to get it |
 |----------|----------------|
 | `GOOGLE_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) |
 | `TWENTYFIRST_API_KEY` | [21st.dev](https://21st.dev/) |
-| `GITHUB_TOKEN` | [GitHub Settings → Developer settings → Fine-grained tokens](https://github.com/settings/tokens?type=beta) (scopes: `repo`, `delete_repo`) |
-| `AWS_ACCESS_KEY_ID` | AWS IAM user with the policy in `infra/iam-policy.json` |
-| `AWS_SECRET_ACCESS_KEY` | Same IAM user |
+| `GITHUB_TOKEN` | [GitHub Settings → Tokens](https://github.com/settings/tokens) — scopes: `repo`, `delete_repo` |
 | `AWS_DEFAULT_REGION` | `eu-central-1` |
+
+**AWS auth** — pick one:
+- **SSO**: add `AWS_PROFILE=your-profile` to `.env`
+- **Static keys**: add `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` to `.env`
 
 ### 3. Run
 
 ```bash
-source .env    # or: set -a; source .env; set +a
+set -a; source .env; set +a
 design-agent
 ```
 
@@ -74,9 +76,19 @@ docker compose up --build
 6. **Publish** — Pushes source to a public GitHub repo under your account
 7. **Destroy** — Cleans up everything (S3 prefix, CloudFront cache, GitHub repo)
 
+## Tests
+
+```bash
+pytest tests/ -v
+```
+
+96 tests covering all tools and config.
+
 ## Infrastructure
 
 Pre-provisioned S3 bucket + CloudFront distribution. Each project deploys to its own URL prefix (`/{project-name}/`).
+
+To use your own infrastructure, run `terraform apply` in `infra/terraform/` and set `DESIGN_AGENT_S3_BUCKET`, `DESIGN_AGENT_CF_DIST_ID`, `DESIGN_AGENT_CF_DOMAIN` in `.env`.
 
 See `infra/iam-policy.json` for required AWS permissions.
 

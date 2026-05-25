@@ -67,13 +67,13 @@ class TestGetApiKey:
         monkeypatch.delenv("MY_API_KEY", raising=False)
         env_file = tmp_path / ".env"
         env_file.write_text("MY_API_KEY=from-file\n")
-        with patch.object(config_module, "OPENCODE_ENV_FILE", env_file):
+        with patch.object(config_module, "_PROJECT_ENV_FILE", env_file):
             assert get_api_key("MY_API_KEY") == "from-file"
 
     def test_raises_key_error_when_not_found(self, monkeypatch, tmp_path):
         monkeypatch.delenv("MY_API_KEY", raising=False)
         missing_file = tmp_path / "missing.env"
-        with patch.object(config_module, "OPENCODE_ENV_FILE", missing_file):
+        with patch.object(config_module, "_PROJECT_ENV_FILE", missing_file):
             with pytest.raises(KeyError, match="MY_API_KEY"):
                 get_api_key("MY_API_KEY")
 
@@ -81,7 +81,7 @@ class TestGetApiKey:
         monkeypatch.setenv("MY_API_KEY", "from-env")
         env_file = tmp_path / ".env"
         env_file.write_text("MY_API_KEY=from-file\n")
-        with patch.object(config_module, "OPENCODE_ENV_FILE", env_file):
+        with patch.object(config_module, "_PROJECT_ENV_FILE", env_file):
             assert get_api_key("MY_API_KEY") == "from-env"
 
     def test_get_google_api_key_uses_correct_name(self, monkeypatch):
@@ -95,7 +95,7 @@ class TestGetApiKey:
     def test_error_message_includes_key_name(self, monkeypatch, tmp_path):
         monkeypatch.delenv("SPECIAL_KEY", raising=False)
         missing_file = tmp_path / "missing.env"
-        with patch.object(config_module, "OPENCODE_ENV_FILE", missing_file):
+        with patch.object(config_module, "_PROJECT_ENV_FILE", missing_file):
             with pytest.raises(KeyError) as exc_info:
                 get_api_key("SPECIAL_KEY")
             assert "SPECIAL_KEY" in str(exc_info.value)
