@@ -4,8 +4,6 @@ import json
 import subprocess
 from pathlib import Path
 
-import boto3
-from botocore.exceptions import ClientError
 from strands import tool
 
 from src.tools._validate import _redact_stderr, safe_build_path, safe_project_name
@@ -17,7 +15,7 @@ MANIFESTS_DIR = Path(__file__).resolve().parent.parent.parent / "manifests"
 def destroy_resources(project_name: str) -> str:
     """Tear down all AWS and GitHub resources for a design project.
 
-    Reads the project manifest and destroys: S3 bucket contents, CloudFront distribution,
+    Reads the project manifest and destroys: S3 project prefix,
     and GitHub repository. Also removes the local manifest file.
 
     Args:
@@ -42,8 +40,8 @@ def destroy_resources(project_name: str) -> str:
         prefix = manifest.get("s3_prefix", project_name)
         results["s3"] = _destroy_s3(bucket, prefix)
 
-    if dist_id := manifest.get("cloudfront_distribution_id"):
-        results["cloudfront"] = _disable_cloudfront(dist_id)
+    # CloudFront is shared infra — never disable it per-project.
+    # Removing the S3 prefix is sufficient to take a project offline.
 
     if repo := manifest.get("github_repo"):
         results["github"] = _destroy_github_repo(repo)
@@ -76,24 +74,6 @@ def _destroy_s3(bucket: str, prefix: str) -> str:
         return f"failed: {_redact_stderr(result.stderr, 200)}"
     return "emptied"
 
-
-def _disable_cloudfront(distribution_id: str) -> str:
-    cf = boto3.client("cloudfront")
-    try:
-        response = cf.get_distribution_config(Id=distribution_id)
-        config = response["DistributionConfig"]
-        etag = response["ETag"]
-        config["Enabled"] = False
-        cf.update_distribution(
-            Id=distribution_id,
-            IfMatch=etag,
-            DistributionConfig=config,
-        )
-        return "disabled (delete manually after propagation)"
-    except ClientError as e:
-        return f"failed: {e.response['Error']['Code']}"
-    except Exception as e:
-        return f"failed: {e}"
 
 
 def _destroy_github_repo(repo: str) -> str:

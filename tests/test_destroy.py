@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, call
 
 import src.tools.destroy as destroy_module
-from src.tools.destroy import destroy_resources, _destroy_s3, _disable_cloudfront, _destroy_github_repo
+from src.tools.destroy import destroy_resources, _destroy_s3, _destroy_github_repo
 
 
 def make_run_result(returncode=0, stdout="", stderr=""):
@@ -49,17 +49,11 @@ class TestDestroyResources:
         data = json.loads(result)
         assert data["destroyed"]["s3"] == "emptied"
 
-    def test_disables_cloudfront(self, manifests_dir):
+    def test_ignores_cloudfront_in_manifest(self, manifests_dir):
         write_manifest(manifests_dir, "myproj", {"cloudfront_distribution_id": "DIST123"})
-        mock_cf = MagicMock()
-        mock_cf.get_distribution_config.return_value = {
-            "DistributionConfig": {"Enabled": True},
-            "ETag": "etag123",
-        }
-        with patch("src.tools.destroy.boto3.client", return_value=mock_cf):
-            result = destroy_resources("myproj")
+        result = destroy_resources("myproj")
         data = json.loads(result)
-        assert "disabled" in data["destroyed"]["cloudfront"]
+        assert "cloudfront" not in data["destroyed"]
 
     def test_deletes_github_repo(self, manifests_dir):
         write_manifest(manifests_dir, "myproj", {"github_repo": "user/myproj"})
@@ -104,17 +98,11 @@ class TestDestroyResources:
             "local_build_path": str(build_dir),
         })
         ok = make_run_result(returncode=0)
-        mock_cf = MagicMock()
-        mock_cf.get_distribution_config.return_value = {
-            "DistributionConfig": {"Enabled": True},
-            "ETag": "etag123",
-        }
         with patch("src.tools.destroy.subprocess.run", return_value=ok):
-            with patch("src.tools.destroy.boto3.client", return_value=mock_cf):
-                with patch("src.tools.destroy.safe_build_path", return_value=str(build_dir)):
-                    result = destroy_resources("myproj")
+            with patch("src.tools.destroy.safe_build_path", return_value=str(build_dir)):
+                result = destroy_resources("myproj")
         data = json.loads(result)
-        assert set(data["destroyed"].keys()) == {"s3", "cloudfront", "github", "local", "manifest"}
+        assert set(data["destroyed"].keys()) == {"s3", "github", "local", "manifest"}
 
 
 class TestDestroyS3:
@@ -139,37 +127,6 @@ class TestDestroyS3:
         assert "rm" in args
         assert "--recursive" in args
         assert "s3://my-bucket/myproj/" in args
-
-
-class TestDisableCloudfront:
-    def test_returns_disabled_message_on_success(self):
-        mock_cf = MagicMock()
-        mock_cf.get_distribution_config.return_value = {
-            "DistributionConfig": {"Enabled": True},
-            "ETag": "etag123",
-        }
-        with patch("src.tools.destroy.boto3.client", return_value=mock_cf):
-            result = _disable_cloudfront("DIST123")
-        assert "disabled" in result
-
-    def test_calls_update_distribution_with_enabled_false(self):
-        mock_cf = MagicMock()
-        mock_cf.get_distribution_config.return_value = {
-            "DistributionConfig": {"Enabled": True},
-            "ETag": "etag123",
-        }
-        with patch("src.tools.destroy.boto3.client", return_value=mock_cf):
-            _disable_cloudfront("DIST123")
-        call_kwargs = mock_cf.update_distribution.call_args[1]
-        assert call_kwargs["DistributionConfig"]["Enabled"] is False
-        assert call_kwargs["IfMatch"] == "etag123"
-
-    def test_returns_failed_on_exception(self):
-        mock_cf = MagicMock()
-        mock_cf.get_distribution_config.side_effect = Exception("NoSuchDistribution")
-        with patch("src.tools.destroy.boto3.client", return_value=mock_cf):
-            result = _disable_cloudfront("DIST123")
-        assert "failed" in result
 
 
 class TestDestroyGithubRepo:
