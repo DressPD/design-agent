@@ -44,6 +44,10 @@ def get_google_api_key() -> str:
     return get_api_key("GOOGLE_API_KEY")
 
 
+def get_21st_dev_api_key() -> str:
+    return get_api_key("TWENTYFIRST_API_KEY")
+
+
 def get_github_token() -> str:
     for name in ("GITHUB_TOKEN", "GH_TOKEN"):
         try:

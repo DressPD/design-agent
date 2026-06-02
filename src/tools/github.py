@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from urllib.parse import quote
 
 from strands import tool
 
@@ -48,6 +49,8 @@ def _git_env() -> dict[str, str]:
         "GIT_AUTHOR_EMAIL": "design-agent@local",
         "GIT_COMMITTER_NAME": "Design Agent",
         "GIT_COMMITTER_EMAIL": "design-agent@local",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GCM_INTERACTIVE": "never",
         "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin"),
     }
     token = _get_github_token()
@@ -55,6 +58,70 @@ def _git_env() -> dict[str, str]:
         env["GITHUB_TOKEN"] = token
         env["GH_TOKEN"] = token
     return env
+
+
+def _authenticated_remote_url(repo_url: str) -> str:
+    token = _get_github_token()
+    if not token or "@" in repo_url or not repo_url.startswith("https://github.com/"):
+        return repo_url
+
+    repo_path = repo_url.removeprefix("https://github.com/")
+    return f"https://x-access-token:{quote(token, safe='')}@github.com/{repo_path}"
+
+
+def _set_remote(project: Path, repo_url: str) -> None:
+    authed_repo_url = _authenticated_remote_url(repo_url)
+    remotes = subprocess.run(
+        ["git", "remote"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if "origin" in remotes.stdout.split():
+        subprocess.run(
+            ["git", "remote", "set-url", "origin", authed_repo_url],
+            cwd=project,
+            capture_output=True,
+            timeout=30,
+            check=True,
+        )
+        return
+
+    subprocess.run(
+        ["git", "remote", "add", "origin", authed_repo_url],
+        cwd=project,
+        capture_output=True,
+        timeout=30,
+        check=True,
+    )
+
+
+def _push_repo(project: Path, repo_url: str, repo_name: str, *, force: bool = False) -> str:
+    git_env = _git_env()
+    _set_remote(project, repo_url)
+
+    command = ["git", "push", "-u", "origin", "main"]
+    if force:
+        command.append("--force")
+
+    push_result = subprocess.run(
+        command,
+        cwd=project,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=git_env,
+    )
+
+    if push_result.returncode != 0:
+        return json.dumps({"error": "git push failed", "stderr": _redact_stderr(push_result.stderr)})
+
+    return json.dumps({
+        "repo_url": repo_url,
+        "repo_name": repo_name,
+        "push_status": "success" if not force else "success (force-pushed to existing)",
+    })
 
 
 @tool
@@ -90,11 +157,13 @@ def github_create_and_push(
     _ensure_git_repo(project)
 
     visibility = "--private" if private else "--public"
+    git_env = _git_env()
     create_result = subprocess.run(
-        ["gh", "repo", "create", repo_name, visibility, "--description", description, "--source", str(project), "--push"],
+        ["gh", "repo", "create", repo_name, visibility, "--description", description],
         capture_output=True,
         text=True,
         timeout=120,
+        env=git_env,
     )
 
     if create_result.returncode != 0:
@@ -106,19 +175,17 @@ def github_create_and_push(
     if not repo_url.startswith("http"):
         repo_url = _get_repo_url(repo_name)
 
-    return json.dumps({
-        "repo_url": repo_url,
-        "repo_name": repo_name,
-        "push_status": "success",
-    })
+    return _push_repo(project, repo_url, repo_name)
 
 
 def _get_repo_url(repo_name: str) -> str:
+    git_env = _git_env()
     result = subprocess.run(
         ["gh", "repo", "view", repo_name, "--json", "url", "-q", ".url"],
         capture_output=True,
         text=True,
         timeout=30,
+        env=git_env,
     )
     return result.stdout.strip()
 
@@ -133,20 +200,4 @@ def _push_to_existing(repo_name: str, project: Path) -> str:
         ["git", "commit", "-m", "Update from Design Agent"],
         cwd=project, capture_output=True, timeout=30, env=git_env,
     )
-    subprocess.run(
-        ["git", "remote", "add", "origin", repo_url],
-        cwd=project, capture_output=True, timeout=30,
-    )
-    push_result = subprocess.run(
-        ["git", "push", "-u", "origin", "main", "--force"],
-        cwd=project, capture_output=True, text=True, timeout=60, env=git_env,
-    )
-
-    if push_result.returncode != 0:
-        return json.dumps({"error": "git push failed", "stderr": _redact_stderr(push_result.stderr)})
-
-    return json.dumps({
-        "repo_url": repo_url,
-        "repo_name": repo_name,
-        "push_status": "success (force-pushed to existing)",
-    })
+    return _push_repo(project, repo_url, repo_name, force=True)

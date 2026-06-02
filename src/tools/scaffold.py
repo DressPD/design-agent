@@ -14,6 +14,31 @@ from src.tools._validate import safe_component_name, safe_project_name
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 NODE_MODULES_CACHE = Path("/tmp/design-agent-cache/node_modules")
 LOCK_CACHE = Path("/tmp/design-agent-cache/package-lock.json")
+# Bump when dependencies change to invalidate cached node_modules
+_CACHE_VERSION = "2"
+_CACHE_VERSION_FILE = Path("/tmp/design-agent-cache/.cache-version")
+
+
+def _cache_version_matches() -> bool:
+    if not _CACHE_VERSION_FILE.is_file():
+        return False
+    return _CACHE_VERSION_FILE.read_text().strip() == _CACHE_VERSION
+
+
+def _clear_cache() -> None:
+    cache_dir = NODE_MODULES_CACHE.parent
+    if cache_dir.is_dir():
+        shutil.rmtree(cache_dir)
+
+
+def _save_cache(project_path: Path) -> None:
+    cache_dir = NODE_MODULES_CACHE.parent
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(project_path / "node_modules", NODE_MODULES_CACHE, symlinks=True)
+    lock = project_path / "package-lock.json"
+    if lock.is_file():
+        shutil.copy2(lock, LOCK_CACHE)
+    _CACHE_VERSION_FILE.write_text(_CACHE_VERSION)
 
 
 @tool
@@ -57,6 +82,7 @@ def scaffold_react_app(
     _write_index_css(project_path)
     _write_main_tsx(project_path)
     _write_app_tsx(project_path, parsed_components)
+    _write_motion_utils(project_path)
     _write_tsconfig(project_path)
     _write_vite_env_dts(project_path)
     _write_gitignore(project_path)
@@ -71,11 +97,12 @@ def scaffold_react_app(
         comp_file = src_dir / f"{cname}.tsx"
         comp_file.write_text(comp["code"])
 
-    if NODE_MODULES_CACHE.is_dir():
+    if NODE_MODULES_CACHE.is_dir() and _cache_version_matches():
         shutil.copytree(NODE_MODULES_CACHE, project_path / "node_modules", symlinks=True)
         if LOCK_CACHE.is_file():
             shutil.copy2(LOCK_CACHE, project_path / "package-lock.json")
     else:
+        _clear_cache()
         result = subprocess.run(
             ["npm", "install", "--yes", "--fetch-retries=2", "--fetch-timeout=30000"],
             cwd=project_path,
@@ -85,12 +112,7 @@ def scaffold_react_app(
         )
         if result.returncode != 0:
             return json.dumps({"error": "npm install failed", "stderr": result.stderr[:500], "project_path": str(project_path)})
-        if not NODE_MODULES_CACHE.parent.exists():
-            NODE_MODULES_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(project_path / "node_modules", NODE_MODULES_CACHE, symlinks=True)
-        lock = project_path / "package-lock.json"
-        if lock.is_file():
-            shutil.copy2(lock, LOCK_CACHE)
+        _save_cache(project_path)
 
     result = subprocess.run(
         ["npm", "run", "build"],
@@ -124,6 +146,10 @@ def _write_package_json(path: Path, name: str) -> None:
         "dependencies": {
             "react": "^19.0.0",
             "react-dom": "^19.0.0",
+            "motion": "^12.0.0",
+            "gsap": "^3.12.0",
+            "@gsap/react": "^2.1.0",
+            "lucide-react": "^0.460.0",
         },
         "devDependencies": {
             "@types/react": "^19.0.0",
@@ -157,7 +183,45 @@ def _write_tailwind_config(path: Path) -> None:
         /** @type {import('tailwindcss').Config} */
         export default {
           content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
-          theme: { extend: {} },
+          theme: {
+            extend: {
+              animation: {
+                'fade-in': 'fadeIn 0.6s ease-out forwards',
+                'fade-up': 'fadeUp 0.6s ease-out forwards',
+                'slide-in-left': 'slideInLeft 0.6s ease-out forwards',
+                'slide-in-right': 'slideInRight 0.6s ease-out forwards',
+                'scale-in': 'scaleIn 0.5s ease-out forwards',
+                'float': 'float 6s ease-in-out infinite',
+                'pulse-slow': 'pulse 4s ease-in-out infinite',
+              },
+              keyframes: {
+                fadeIn: {
+                  '0%': { opacity: '0' },
+                  '100%': { opacity: '1' },
+                },
+                fadeUp: {
+                  '0%': { opacity: '0', transform: 'translateY(20px)' },
+                  '100%': { opacity: '1', transform: 'translateY(0)' },
+                },
+                slideInLeft: {
+                  '0%': { opacity: '0', transform: 'translateX(-40px)' },
+                  '100%': { opacity: '1', transform: 'translateX(0)' },
+                },
+                slideInRight: {
+                  '0%': { opacity: '0', transform: 'translateX(40px)' },
+                  '100%': { opacity: '1', transform: 'translateX(0)' },
+                },
+                scaleIn: {
+                  '0%': { opacity: '0', transform: 'scale(0.95)' },
+                  '100%': { opacity: '1', transform: 'scale(1)' },
+                },
+                float: {
+                  '0%, 100%': { transform: 'translateY(0)' },
+                  '50%': { transform: 'translateY(-10px)' },
+                },
+              },
+            },
+          },
           plugins: [],
         }
     """))
@@ -199,6 +263,35 @@ def _write_index_css(path: Path) -> None:
         @tailwind base;
         @tailwind components;
         @tailwind utilities;
+
+        @layer base {
+          html {
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+          }
+
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+
+          ::selection {
+            background-color: rgb(var(--color-primary, 59 130 246) / 0.2);
+          }
+        }
+
+        @layer utilities {
+          .text-balance {
+            text-wrap: balance;
+          }
+
+          .gpu-accelerated {
+            will-change: transform;
+            transform: translateZ(0);
+          }
+        }
     """))
 
 
@@ -246,6 +339,133 @@ def _write_app_tsx(path: Path, components: list[dict]) -> None:
     lines.append("}")
     lines.append("")
     (src / "App.tsx").write_text("\n".join(lines))
+
+
+def _write_motion_utils(path: Path) -> None:
+    utils_dir = path / "src" / "utils"
+    utils_dir.mkdir(parents=True, exist_ok=True)
+    (utils_dir / "motion.tsx").write_text(dedent("""\
+        import { motion, type Variants, useInView } from "motion/react"
+        import { useRef, type ReactNode } from "react"
+
+        const fadeUp: Variants = {
+          hidden: { opacity: 0, y: 30 },
+          visible: { opacity: 1, y: 0 },
+        }
+
+        const fadeIn: Variants = {
+          hidden: { opacity: 0 },
+          visible: { opacity: 1 },
+        }
+
+        const slideInLeft: Variants = {
+          hidden: { opacity: 0, x: -60 },
+          visible: { opacity: 1, x: 0 },
+        }
+
+        const slideInRight: Variants = {
+          hidden: { opacity: 0, x: 60 },
+          visible: { opacity: 1, x: 0 },
+        }
+
+        const scaleIn: Variants = {
+          hidden: { opacity: 0, scale: 0.9 },
+          visible: { opacity: 1, scale: 1 },
+        }
+
+        type AnimationVariant = "fadeUp" | "fadeIn" | "slideInLeft" | "slideInRight" | "scaleIn"
+
+        const variantMap: Record<AnimationVariant, Variants> = {
+          fadeUp,
+          fadeIn,
+          slideInLeft,
+          slideInRight,
+          scaleIn,
+        }
+
+        interface AnimateInProps {
+          children: ReactNode
+          variant?: AnimationVariant
+          delay?: number
+          duration?: number
+          className?: string
+          once?: boolean
+        }
+
+        export function AnimateIn({
+          children,
+          variant = "fadeUp",
+          delay = 0,
+          duration = 0.6,
+          className,
+          once = true,
+        }: AnimateInProps) {
+          const ref = useRef<HTMLDivElement>(null)
+          const isInView = useInView(ref, { once, margin: "-80px" })
+
+          return (
+            <motion.div
+              ref={ref}
+              variants={variantMap[variant]}
+              initial="hidden"
+              animate={isInView ? "visible" : "hidden"}
+              transition={{ duration, delay, ease: [0.25, 0.1, 0.25, 1] }}
+              className={className}
+            >
+              {children}
+            </motion.div>
+          )
+        }
+
+        interface StaggerChildrenProps {
+          children: ReactNode
+          staggerDelay?: number
+          className?: string
+        }
+
+        export function StaggerChildren({
+          children,
+          staggerDelay = 0.1,
+          className,
+        }: StaggerChildrenProps) {
+          const ref = useRef<HTMLDivElement>(null)
+          const isInView = useInView(ref, { once: true, margin: "-60px" })
+
+          return (
+            <motion.div
+              ref={ref}
+              initial="hidden"
+              animate={isInView ? "visible" : "hidden"}
+              variants={{
+                visible: { transition: { staggerChildren: staggerDelay } },
+              }}
+              className={className}
+            >
+              {children}
+            </motion.div>
+          )
+        }
+
+        export function StaggerItem({
+          children,
+          className,
+        }: {
+          children: ReactNode
+          className?: string
+        }) {
+          return (
+            <motion.div
+              variants={fadeUp}
+              transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+              className={className}
+            >
+              {children}
+            </motion.div>
+          )
+        }
+
+        export { motion, type Variants }
+    """))
 
 
 def _write_tsconfig(path: Path) -> None:
