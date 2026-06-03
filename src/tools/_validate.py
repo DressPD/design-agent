@@ -34,10 +34,18 @@ def safe_component_name(name: str) -> str:
 
 
 def safe_build_path(path_str: str, allowed_prefix: str = "/tmp/design-agent-builds/") -> str:
-    """Validate a build path stays within allowed prefix."""
+    """Validate a build path stays within allowed prefix.
+
+    Handles macOS where /tmp is a symlink to /private/tmp — Path.resolve()
+    returns the real /private/tmp/... path, so we check both variants.
+    """
     from pathlib import Path
     resolved = str(Path(path_str).resolve())
-    if not resolved.startswith(allowed_prefix):
+    # Build the list of accepted prefixes: the given one + its /private equivalent (macOS)
+    accepted = {allowed_prefix}
+    if allowed_prefix.startswith("/tmp/"):
+        accepted.add("/private" + allowed_prefix)
+    if not any(resolved.startswith(p) for p in accepted):
         raise ValueError(f"Build path escapes allowed directory: {path_str!r}")
     return resolved
 
