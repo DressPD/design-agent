@@ -117,6 +117,16 @@ def _push_repo(project: Path, repo_url: str, repo_name: str, *, force: bool = Fa
     if push_result.returncode != 0:
         return json.dumps({"error": "git push failed", "stderr": _redact_stderr(push_result.stderr)})
 
+    try:
+        from src.tools.manifest import save_manifest
+        github_repo = repo_url.removeprefix("https://github.com/")
+        save_manifest(
+            project_name=repo_name,
+            github_repo=github_repo,
+        )
+    except Exception:
+        pass
+
     return json.dumps({
         "repo_url": repo_url,
         "repo_name": repo_name,

@@ -79,6 +79,18 @@ def deploy_to_aws(
     dist_config = cf_client.get_distribution(Id=cloudfront_distribution_id)
     domain = dist_config["Distribution"]["DomainName"]
 
+    try:
+        from src.tools.manifest import save_manifest
+        save_manifest(
+            project_name=project_name,
+            s3_bucket=s3_bucket,
+            cloudfront_distribution_id=cloudfront_distribution_id,
+            cloudfront_domain=domain,
+            local_build_path=dist_path,
+        )
+    except Exception:
+        pass
+
     return json.dumps({
         "live_url": f"https://{domain}/{project_name}/",
         "cloudfront_domain": f"https://{domain}",
